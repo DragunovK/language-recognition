@@ -36,24 +36,22 @@ class Application(QtWidgets.QMainWindow, Ui_MainWindow):
         self.l_mode_combo_box.addItems(['Local dir', 'Local file', 'Web'])
         self.bind_functions()
 
-    def single_start(self):
+    def process_single(self):
         self.local_text_browser.clear()
 
         src_path = self.l_file_path_text.toPlainText()
         if not src_path:
             return
 
-        text = ''
         mode = self.l_mode_combo_box.currentText()
         if mode == 'Local file':
             try:
-                file = open(src_path, 'r', encoding='utf-8')
-                text = BeautifulSoup(file.read(), features='html.parser').get_text()
-                self.local_text_browser.append(f'Successfully read file: {src_path}\n')
-            except OSError:
-                self.local_text_browser.append(f'Unable to read file: {src_path}\n')
+                with open(src_path, 'r', encoding='utf-8') as file:
+                    text = BeautifulSoup(file.read(), features='html.parser').get_text()
+                    self.local_text_browser.append(f'Successfully read file: {src_path}\n')
+            except Exception as e:
+                self.local_text_browser.append(e)
                 return
-
         elif mode == 'Web':
             document = requests.get(src_path)
             if document.status_code == 200:
@@ -63,13 +61,15 @@ class Application(QtWidgets.QMainWindow, Ui_MainWindow):
                 self.local_text_browser.append(f'Unable to read text from url: {src_path}. '
                                                f'Status code {document.status_code}.\n')
                 return
+        else:
+            raise ValueError(f'Unknown mode. {mode=}')
 
         method = self.l_method_combo_box.currentIndex()
         result = [nn.lang, al.lang, ng.lang][method](text)
         self.local_text_browser.append(f'Language: {result}')
 
     @benchmark
-    def dir_start(self):
+    def process_dir(self):
         self.local_text_browser.clear()
 
         src_path = self.l_file_path_text.toPlainText()
@@ -80,23 +80,20 @@ class Application(QtWidgets.QMainWindow, Ui_MainWindow):
         summary = list()
 
         for file_name in os.listdir(src_path):
-            print(file_name)
             self.local_text_browser.append(file_name)
-
             try:
-                file = open(src_path + '/' + file_name, 'r', encoding='utf-8')
-                text = BeautifulSoup(file.read(), features='html.parser').get_text()
-                self.local_text_browser.append(f'Read success.')
-            except OSError:
-                self.local_text_browser.append(f'Read failure.\n'
-                                               f'############################')
+                with open(f'{src_path}/{file_name}', 'r', encoding='utf-8') as file:
+                    text = BeautifulSoup(file.read(), features='html.parser').get_text()
+                    self.local_text_browser.append(f'Read success.')
+
+                    result = [nn.lang, al.lang, ng.lang][method](text)
+                    self.local_text_browser.append(f'Language: {result}\n'
+                                                   f'############################')
+                    summary.append(result)
+            except Exception as e:
+                self.local_text_browser.append(f'{e}.\n############################')
                 summary.append('Unable to read')
                 continue
-
-            result = [nn.lang, al.lang, ng.lang][method](text)
-            self.local_text_browser.append(f'Language: {result}\n'
-                                           f'############################')
-            summary.append(result)
 
         counter = Counter(summary)
         self.local_text_browser.append(f'Summary:\n'
@@ -111,26 +108,26 @@ class Application(QtWidgets.QMainWindow, Ui_MainWindow):
         for m in [self.select_file, self.select_dir]:
             try:
                 self.l_file_path_browse_btn.clicked.disconnect(m)
-            except:
+            except Exception:
                 pass  # ignored
 
-        for m in [self.single_start, self.dir_start]:
+        for m in [self.process_single, self.process_dir]:
             try:
                 self.l_method_start_btn.clicked.disconnect(m)
-            except:
+            except Exception:
                 pass  # ignored
 
         if method == 'Local dir':
             self.l_file_path_browse_btn.setEnabled(True)
             self.l_file_path_browse_btn.clicked.connect(self.select_dir)
-            self.l_method_start_btn.clicked.connect(self.dir_start)
+            self.l_method_start_btn.clicked.connect(self.process_dir)
         elif method == 'Local file':
             self.l_file_path_browse_btn.setEnabled(True)
             self.l_file_path_browse_btn.clicked.connect(self.select_file)
-            self.l_method_start_btn.clicked.connect(self.single_start)
+            self.l_method_start_btn.clicked.connect(self.process_single)
         elif method == 'Web':
             self.l_file_path_browse_btn.setEnabled(False)
-            self.l_method_start_btn.clicked.connect(self.single_start)
+            self.l_method_start_btn.clicked.connect(self.process_single)
 
     def select_file(self):
         file_name, _ = QtWidgets.QFileDialog.getOpenFileName(self)
@@ -145,12 +142,12 @@ class Application(QtWidgets.QMainWindow, Ui_MainWindow):
     def save_as(self):
         file_name, _ = QtWidgets.QFileDialog.getSaveFileName(self, filter='*.txt')
         if file_name:
-            file = open(file_name, 'w')
-            file.write(self.local_text_browser.toPlainText())
+            with open(file_name, 'w') as file:
+                file.write(self.local_text_browser.toPlainText())
 
     def bind_functions(self):
         self.action_about.triggered.connect(lambda: HelpDialog().exec_())
         self.l_mode_combo_box.currentTextChanged.connect(self.select_method)
         self.action_save_as.triggered.connect(self.save_as)
         self.l_file_path_browse_btn.clicked.connect(self.select_dir)
-        self.l_method_start_btn.clicked.connect(self.dir_start)
+        self.l_method_start_btn.clicked.connect(self.process_dir)
